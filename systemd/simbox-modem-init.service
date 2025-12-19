@@ -1,0 +1,12 @@
+[Unit]
+Description=Sim-box modem initialization
+After=network.target
+Before=simbox-smsd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/simbox-modem-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

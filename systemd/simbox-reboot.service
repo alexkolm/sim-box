@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily controlled reboot of sim-box
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/reboot

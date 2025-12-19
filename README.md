@@ -49,7 +49,6 @@ sim-box (Linux)
 ↓
 Telegram bot → your phone
 
-
 - The SIM card is inserted into a USB modem
 - The modem is connected to the sim-box device
 - sim-box communicates with the modem via AT commands

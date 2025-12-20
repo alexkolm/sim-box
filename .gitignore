@@ -1,0 +1,8 @@
+# legacy configs (removed)
+etc/modem.env
+etc/telegram.env
+
+# secrets
+etc/secrets.env
+/etc/simbox/secrets.env
+

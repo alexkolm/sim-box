@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.0 — 2025-12-20
+
+### Improvements
+- SMS daemon (`simbox-smsd`) made resilient to:
+  - modem disappearance
+  - SIM not ready state
+  - read errors from TTY device
+- Added controlled startup delay until SIM becomes READY
+- Eliminated busy-loops, improved long-term stability
+
+### Internal
+- Unified configuration via simbox.conf + secrets.env
+- Code structure cleanup and safety improvements
+
 ## [1.0.0] — 2025-12-20
 
 ### Added

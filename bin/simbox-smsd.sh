@@ -27,6 +27,7 @@ fi
 ###############################################################################
 
 MODEM_DEV="${MODEM_DEV:-/dev/ttyUSB1}"
+SIM_STATE_FILE="${SIM_STATE_FILE:-/var/lib/simbox/sim.state}"
 
 ###############################################################################
 # VALIDATION
@@ -40,6 +41,22 @@ fi
 ###############################################################################
 # HELPERS
 ###############################################################################
+
+check_modem_ready() {
+    # модем отсутствует
+    [[ ! -c "$MODEM_DEV" ]] && return 1
+
+    # SIM состояние известно и плохое
+    if [[ -f "$SIM_STATE_FILE" ]]; then
+        case "$(cat "$SIM_STATE_FILE")" in
+            READY) return 0 ;;
+            *)     return 2 ;;
+        esac
+    fi
+
+    # если состояния нет — считаем, что не готов
+    return 2
+}
 
 send_at() {
     echo -e "$1\r" > "$MODEM_DEV"
@@ -66,7 +83,21 @@ ucs2_to_utf8() {
 # INIT MODEM FOR SMS
 ###############################################################################
 
-echo "[simbox-smsd] init modem"
+echo "[simbox-smsd] waiting for modem and SIM"
+
+for _ in {1..30}; do
+    if check_modem_ready; then
+        break
+    fi
+    sleep 2
+done
+
+if ! check_modem_ready; then
+    echo "[simbox-smsd] modem or SIM not ready, exiting"
+    exit 0
+fi
+
+echo "[simbox-smsd] init modem for SMS"
 
 send_at "ATZ"
 send_at "ATE0"
@@ -76,15 +107,24 @@ send_at "AT+CNMI=2,1,0,0,0"
 
 read_modem
 
-echo "[simbox-smsd] ready, waiting for SMS"
-send_telegram "📡 sim-box: SMS RAW daemon started"
-
 ###############################################################################
 # MAIN LOOP
 ###############################################################################
 
 while true; do
-    if read -r line < "$MODEM_DEV"; then
+    # модем пропал — пауза и retry
+    if [[ ! -c "$MODEM_DEV" ]]; then
+        echo "[simbox-smsd] modem disappeared, waiting..."
+        sleep 5
+        continue
+    fi
+
+    if ! read -r line < "$MODEM_DEV"; then
+        echo "[simbox-smsd] read error, retrying..."
+        sleep 1
+        continue
+    fi
+
         echo "[MODEM] $line"
 
         case "$line" in
@@ -94,6 +134,12 @@ while true; do
 
                 send_at "AT+CMGR=$IDX"
                 RESP="$(read_modem)"
+
+		if ! echo "$RESP" | grep -q "^+CMGR:"; then
+    		    echo "[simbox-smsd] invalid SMS response, skipping"
+    		    continue
+		fi
+
 
                 echo "========== RAW SMS BEGIN =========="
                 echo "$RESP"
@@ -114,5 +160,5 @@ $RESP"
                 send_at "AT+CMGD=$IDX"
                 ;;
         esac
-    fi
+    sleep 0.1
 done

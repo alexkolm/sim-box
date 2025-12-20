@@ -1,0 +1,7 @@
+[Unit]
+Description=Sim-box monthly keep-alive SMS
+After=network.target simbox-modem-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/simbox-monthly-sms.sh

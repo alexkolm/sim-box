@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.0 — Monthly SIM keep-alive
+
+### Added
+- Monthly keep-alive SMS service
+- systemd service + timer for SIM activity
+- Configurable target number and message text via simbox.conf
+
+### Improved
+- SMS daemon resilience to modem/SIM disappearance
+- Unified configuration and secrets handling
+
 ## v1.1.0 — 2025-12-20
 
 ### Improvements

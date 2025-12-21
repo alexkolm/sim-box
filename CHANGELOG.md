@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.1 — 2025-12-21
+
+### Fixed
+- Fixed simbox-heartbeat crash caused by `set -euo pipefail` when `AT+CSQ` returned no data
+- Made CSQ parsing safe for empty modem responses
+
+
 ## v1.2.0 — Monthly SIM keep-alive
 
 ### Added

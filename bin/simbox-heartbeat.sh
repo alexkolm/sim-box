@@ -60,7 +60,7 @@ UPTIME="$(uptime -p)"
 
 MODEM_STATUS="❌ not found"
 
-if lsusb | grep -qi "${MODEM_USB_VENDOR:-19d2}"; then
+if lsusb 2>/dev/null | grep -qi "${MODEM_USB_VENDOR:-19d2}"; then
     MODEM_STATUS="✅ found"
 fi
 
@@ -97,7 +97,7 @@ if [[ -c "$MODEM_DEV" ]]; then
 
     RESP="$(timeout 2 cat "$MODEM_DEV" || true)"
 
-    CSQ_VAL="$(echo "$RESP" | grep '+CSQ:' | sed -E 's/.*\+CSQ: ([0-9]+),.*/\1/' | head -n1)"
+    CSQ_VAL="$(echo "$RESP" | sed -nE 's/.*\+CSQ: ([0-9]+),.*/\1/p' | head -n1)"
 
     if [[ -n "$CSQ_VAL" ]]; then
         if [[ "$CSQ_VAL" == "99" ]]; then

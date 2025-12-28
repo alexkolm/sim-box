@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.3] – 2025-12-28
+
+### Fixed
+- Finalized monthly SMS sending logic (`simbox-monthly-sms.sh`)
+- Resolved false-negative SMS failures caused by zero balance / tariff restrictions
+- Improved robustness of SMS submission without relying on `>` prompt
+
+### Notes
+- Outgoing SMS delivery depends on tariff and available balance
+- Script behavior verified with positive balance on real SIM
+
 ## [1.2.2] – 2025-12-28
 
 ### Added

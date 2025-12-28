@@ -8,7 +8,7 @@ set -euo pipefail
 SIMBOX_CONF="/etc/simbox/simbox.conf"
 SIMBOX_SECRETS="/etc/simbox/secrets.env"
 
-[[ -f "$SIMBOX_CONF" ]] && source "$SIMBOX_CONF"
+[[ -f "$SIMBOX_CONF" ]]    && source "$SIMBOX_CONF"
 [[ -f "$SIMBOX_SECRETS" ]] && source "$SIMBOX_SECRETS"
 
 ###############################################################################
@@ -18,11 +18,14 @@ SIMBOX_SECRETS="/etc/simbox/secrets.env"
 MODEM_DEV="${MODEM_DEV:-/dev/ttyUSB1}"
 SIM_STATE_FILE="${SIM_STATE_FILE:-/var/lib/simbox/sim.state}"
 
+SMS_TEXT="${MONTHLY_SMS_TEXT:-monthly message}"
+SMS_TARGET="${MONTHLY_SMS_TARGET:-}"
+
 ###############################################################################
 # VALIDATION
 ###############################################################################
 
-if [[ -z "${MONTHLY_SMS_TARGET:-}" ]]; then
+if [[ -z "$SMS_TARGET" ]]; then
     echo "[simbox-monthly-sms] MONTHLY_SMS_TARGET not set, exiting"
     exit 0
 fi
@@ -43,47 +46,58 @@ send_telegram() {
         > /dev/null
 }
 
-send_at() {
+send_cmd() {
     echo -e "$1\r" > "$MODEM_DEV"
-    sleep 0.5
 }
 
 read_modem() {
-    timeout 3 cat "$MODEM_DEV" || true
+    timeout "${1:-5}" cat "$MODEM_DEV" || true
 }
 
 ###############################################################################
 # PRECHECKS
 ###############################################################################
 
-# Проверка SIM
-if [[ ! -f "$SIM_STATE_FILE" ]] || [[ "$(cat "$SIM_STATE_FILE")" != "READY" ]]; then
+if [[ ! -f "$SIM_STATE_FILE" || "$(cat "$SIM_STATE_FILE")" != "READY" ]]; then
     send_telegram "⚠️ sim-box: monthly SMS NOT sent — SIM not READY"
     exit 0
 fi
 
-# Проверка модема
 if [[ ! -c "$MODEM_DEV" ]]; then
     send_telegram "⚠️ sim-box: monthly SMS NOT sent — modem not found"
     exit 0
 fi
 
 ###############################################################################
-# SEND SMS
+# SEND SMS (GSM, no '>' ожидания)
 ###############################################################################
 
-SMS_TEXT="${MONTHLY_SMS_TEXT:-тестовое ежемесячное сообщение}"
+send_cmd "AT"
+sleep 0.3
+send_cmd "AT+CMGF=1"
+sleep 0.3
+send_cmd "AT+CSCS=\"GSM\""
+sleep 0.3
 
-send_at "AT+CMGF=1"
-send_at "AT+CSCS=\"UCS2\""
-send_at "AT+CMGS=\"${MONTHLY_SMS_TARGET}\""
-sleep 0.5
+# очистить вход
+read_modem 2 >/dev/null
+
+# инициировать отправку
+send_cmd "AT+CMGS=\"${SMS_TARGET}\""
+
+# КРИТИЧНО: небольшая пауза, без ожидания '>'
+sleep 1
+
+# отправка текста + Ctrl+Z
 echo -ne "${SMS_TEXT}\x1A" > "$MODEM_DEV"
 
-RESP="$(read_modem)"
+# читать ответ
+RESP="$(read_modem 15)"
 
-if echo "$RESP" | grep -q "OK"; then
-    send_telegram "✅ sim-box: monthly SMS sent to ${MONTHLY_SMS_TARGET}"
+if echo "$RESP" | grep -qE '\+CMGS:|OK'; then
+    send_telegram "✅ sim-box: monthly SMS sent to ${SMS_TARGET}"
 else
-    send_telegram "❌ sim-box: monthly SMS FAILED to ${MONTHLY_SMS_TARGET}"
+    send_telegram "❌ sim-box: monthly SMS FAILED to ${SMS_TARGET}"
 fi
+
+exit 0

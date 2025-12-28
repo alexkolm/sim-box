@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.2] – 2025-12-28
+
+### Added
+- New `simbox-balance.sh` script for querying SIM card balance.
+- Balance value integrated into daily Telegram heartbeat.
+
+### Changed
+- `simbox-heartbeat.sh` now retrieves balance via internal helper script.
+
+### Notes
+- Balance retrieval is operator-dependent and may require adjustment.
+
 ## v1.2.1 — 2025-12-21
 
 ### Fixed

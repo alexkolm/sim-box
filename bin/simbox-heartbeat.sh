@@ -8,28 +8,18 @@ set -euo pipefail
 SIMBOX_CONF="/etc/simbox/simbox.conf"
 SIMBOX_SECRETS="/etc/simbox/secrets.env"
 
-if [[ -f "$SIMBOX_CONF" ]]; then
-    # shellcheck disable=SC1090
-    source "$SIMBOX_CONF"
-else
-    echo "[simbox-heartbeat] simbox.conf not found"
-fi
-
-if [[ -f "$SIMBOX_SECRETS" ]]; then
-    # shellcheck disable=SC1090
-    source "$SIMBOX_SECRETS"
-else
-    echo "[simbox-heartbeat] secrets.env not found"
-fi
+[[ -f "$SIMBOX_CONF" ]]    && source "$SIMBOX_CONF"
+[[ -f "$SIMBOX_SECRETS" ]] && source "$SIMBOX_SECRETS"
 
 ###############################################################################
-# DEFAULTS (safety net)
+# DEFAULTS
 ###############################################################################
 
 MODEM_DEV="${MODEM_DEV:-/dev/ttyUSB1}"
 MODEM_USB_VENDOR="${MODEM_USB_VENDOR:-19d2}"
 STATE_DIR="${STATE_DIR:-/var/lib/simbox}"
 SIM_STATE_FILE="${SIM_STATE_FILE:-$STATE_DIR/sim.state}"
+BALANCE_CMD="/usr/local/bin/simbox-balance.sh"
 
 ###############################################################################
 # HOST INFO
@@ -43,11 +33,7 @@ DATE="$(date '+%Y-%m-%d %H:%M:%S')"
 ###############################################################################
 
 CPU_TEMP_RAW="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)"
-if [[ "$CPU_TEMP_RAW" =~ ^[0-9]+$ ]]; then
-    CPU_TEMP="$(awk "BEGIN {printf \"%.1f\", $CPU_TEMP_RAW/1000}")"
-else
-    CPU_TEMP="n/a"
-fi
+CPU_TEMP="$(awk "BEGIN {printf \"%.1f\", ${CPU_TEMP_RAW:-0}/1000}")"
 
 MEM_FREE="$(free -m | awk '/Mem:/ {print $4}')"
 MEM_TOTAL="$(free -m | awk '/Mem:/ {print $2}')"
@@ -59,13 +45,10 @@ UPTIME="$(uptime -p)"
 ###############################################################################
 
 MODEM_STATUS="❌ not found"
-
-if lsusb 2>/dev/null | grep -qi "${MODEM_USB_VENDOR:-19d2}"; then
-    MODEM_STATUS="✅ found"
-fi
+lsusb 2>/dev/null | grep -qi "$MODEM_USB_VENDOR" && MODEM_STATUS="✅ found"
 
 ###############################################################################
-# SIM STATE (from modem-init)
+# SIM STATE
 ###############################################################################
 
 SIM_STATUS="❓ unknown"
@@ -79,8 +62,6 @@ if [[ -f "$SIM_STATE_FILE" ]]; then
         UNKNOWN)       SIM_STATUS="⚠ unknown" ;;
         *)             SIM_STATUS="⚠ invalid state" ;;
     esac
-else
-    SIM_STATUS="❓ no data"
 fi
 
 ###############################################################################
@@ -90,20 +71,26 @@ fi
 CSQ_STATUS="❓ unknown"
 
 if [[ -c "$MODEM_DEV" ]]; then
-    {
-        echo -e "AT+CSQ\r"
-        sleep 0.3
-    } > "$MODEM_DEV"
+    timeout 1 cat "$MODEM_DEV" >/dev/null 2>&1 || true
+    echo -e "AT+CSQ\r" > "$MODEM_DEV"
 
-    RESP="$(timeout 2 cat "$MODEM_DEV" || true)"
+    RESP="$(timeout 5 cat "$MODEM_DEV" || true)"
+    CSQ_VAL="$(echo "$RESP" | sed -nE 's/.*\+CSQ:[[:space:]]*([0-9]+),.*/\1/p' | head -n1)"
 
-    CSQ_VAL="$(echo "$RESP" | sed -nE 's/.*\+CSQ: ([0-9]+),.*/\1/p' | head -n1)"
+    [[ -n "$CSQ_VAL" && "$CSQ_VAL" != "99" ]] && CSQ_STATUS="📶 CSQ=$CSQ_VAL"
+    [[ "$CSQ_VAL" == "99" ]] && CSQ_STATUS="❌ no signal"
+fi
 
-    if [[ -n "$CSQ_VAL" ]]; then
-        if [[ "$CSQ_VAL" == "99" ]]; then
-            CSQ_STATUS="❌ no signal"
-        else
-            CSQ_STATUS="📶 CSQ=$CSQ_VAL"
+###############################################################################
+# BALANCE (USSD via simbox-balance.sh)
+###############################################################################
+
+BALANCE_TEXT="💰 Balance:\n❌ unavailable"
+
+if [[ -x "$BALANCE_CMD" ]]; then
+    if BAL_OUT="$(timeout 25 "$BALANCE_CMD" 2>/dev/null || true)"; then
+        if echo "$BAL_OUT" | grep -q "💰 Balance:"; then
+            BALANCE_TEXT="$(echo "$BAL_OUT" | sed '1d')"
         fi
     fi
 fi
@@ -122,11 +109,14 @@ TEXT="📡 *Sim-box alive*
 📱 SIM: $SIM_STATUS
 📶 Signal: $CSQ_STATUS
 
+💰 Balance:
+$BALANCE_TEXT
+
 🌡 CPU temp: ${CPU_TEMP}°C
 💾 RAM free: ${MEM_FREE}/${MEM_TOTAL} MB
 ⏱ Uptime: $UPTIME"
 
 curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-  -d chat_id="${CHAT_ID}" \
+  -d chat_id="$CHAT_ID" \
   -d parse_mode="Markdown" \
   --data-urlencode text="$TEXT" >/dev/null
